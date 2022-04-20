@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+
+<Coder name="xiaoming" sex="man" class="sax.entity.Coder" love="girl">
+     <Girl name="Catalina1" height="171" breast="C++1" legLength="151" class="sax.entity.Girl">
+          aaa
+     </Girl>
+     <Girl name="Catalina2" height="172" breast="C++2" legLength="152" class="sax.entity.Girl">
+          bbb
+     </Girl>
+</Coder>
