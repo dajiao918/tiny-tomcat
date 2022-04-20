@@ -6,8 +6,8 @@
 ### web容器相关
 
 - [x] 生命周期管控，以Lifecycle为顶级接口 **简易实现**
-
 - [x] 打破双亲委派，实现web程序类加载隔离 **简易实现**
+- [x] 自定义Digester解析xml文件 **简易实现**
 - [x] 实现Engine，Host，Context，Wrapper四种web容器，逐级处理request请求 **简易实现**
 - [x] Connector连接器，接收socket，轮询事件 **简易实现**
 - [x] 实现DefaultServlet，加载静态资源 **简易实现**
