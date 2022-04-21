@@ -16,6 +16,9 @@ public class Catalina {
 
     private Server server;
 
+    private ClassLoader parentClassloader = this.getClass().getClassLoader();
+    private boolean loaded = false;
+
     public void setServer(StandardServer server) {
         this.server = server;
     }
@@ -24,7 +27,18 @@ public class Catalina {
         return this.server;
     }
 
+    public void setParentClassloader(ClassLoader parentClassloader) {
+        this.parentClassloader = parentClassloader;
+    }
+
+    public ClassLoader getParentClassLoader() {
+        return parentClassloader;
+    }
+
     public void load() {
+        if (loaded) {
+            return;
+        }
         // 设置catalina.home为用户工作目录
         initDirs();
         // 创建xml解析器
@@ -55,21 +69,38 @@ public class Catalina {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        loaded = true;
     }
 
     public void start() {
         if (getServer() == null) {
             load();
+            loaded = true;
         }
         if (getServer() == null) {
             log.error("server create failure");
             return;
         }
+
+        getServer().setCatalina(this);
+
         try {
             getServer().start();
         } catch (Exception e) {
             e.printStackTrace();
         }
+
+        getServer().await();
+        stop();
+    }
+
+    private void stop() {
+        getServer().stop();
+        if (getServer().getState() == LifecycleState.DESTROYED
+            || getServer().getState() == LifecycleState.STOPPED) {
+            return;
+        }
+        getServer().destroy();
     }
 
     private File configFile() {
@@ -79,8 +110,8 @@ public class Catalina {
         }
         return file;
     }
-
     // 设置系统变量CATALINA_HOME，也就是tomcat的根目录
+
     private void initDirs() {
         String catalineHome = System.getProperty(Globals.CATALINA_HOME);
         if (catalineHome == null) {
@@ -127,5 +158,4 @@ public class Catalina {
         digester.addSetBean("/Server/Service/Engine/Host", "addChild","org.apache.catalina.Container");
         return digester;
     }
-
 }

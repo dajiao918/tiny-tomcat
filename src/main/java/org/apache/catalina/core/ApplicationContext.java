@@ -361,4 +361,11 @@ public class ApplicationContext implements ServletContext {
     public void declareRoles(String... roleNames) {
 
     }
+
+    public void clearAttributes() {
+
+        for (String key : attributes.keySet()) {
+            attributes.remove(key);
+        }
+    }
 }

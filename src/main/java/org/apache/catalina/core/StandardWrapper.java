@@ -142,6 +142,22 @@ public class StandardWrapper extends ContainerBase implements Wrapper, ServletCo
     }
 
     @Override
+    public void startInternal() {
+        setState(LifecycleState.STARTING, null);
+        super.startInternal();
+    }
+
+    @Override
+    public void stopInternal() {
+        setState(LifecycleState.STOPPING, null);
+        try {
+            unload();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
     public void deallocate(Servlet servlet) {
         // NOTHING
     }

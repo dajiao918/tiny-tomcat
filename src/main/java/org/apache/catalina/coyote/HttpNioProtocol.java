@@ -18,6 +18,7 @@ public class HttpNioProtocol implements ProtocolHandler {
 
     private AbstractEndpoint endpoint;
     private Adapter adapter;
+    private final String prefix = "http-nio";
 
     public HttpNioProtocol() {
         HttpConnectionHandler handler = new HttpConnectionHandler();
@@ -33,18 +34,33 @@ public class HttpNioProtocol implements ProtocolHandler {
     @Override
     public void init() throws IOException {
         log.info("HttpNioProtocol init");
+        endpoint.setName(prefix + "-");
         endpoint.init();
     }
 
     @Override
     public void stop() {
-        endpoint.stop();
+        try {
+            endpoint.stop();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
     public void start() throws IOException {
         log.info("HttpNioProtocol start");
         endpoint.start();
+    }
+
+    @Override
+    public void pause() {
+        endpoint.pause();
+    }
+
+    @Override
+    public void destroy() {
+        //
     }
 
     public class HttpConnectionHandler implements NioEndPoint.Handler{

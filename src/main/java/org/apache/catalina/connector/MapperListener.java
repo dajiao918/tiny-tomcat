@@ -162,7 +162,6 @@ public class MapperListener extends LifecycleBase implements ContainerListener, 
 
         Engine engine = (Engine) connector.getService().getContainer();
         removeListeners(engine);
-        mapper = null;
     }
 
     @Override
@@ -175,7 +174,8 @@ public class MapperListener extends LifecycleBase implements ContainerListener, 
 
     @Override
     public void lifecycleEvent(LifecycleEvent event) {
-        if (event.getType().equals(Lifecycle.BEFORE_STOP_EVENT)) {
+        // 先删除孩子，再删除父亲，使用AFTER_STOP_EVENT事件
+        if (event.getType().equals(Lifecycle.AFTER_STOP_EVENT)) {
             Object obj = event.getSource();
             if (obj instanceof Wrapper) {
                 unregisterWrapper((Wrapper) obj);

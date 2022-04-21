@@ -1,7 +1,5 @@
 package org.apache.catalina.core;
 
-import com.sun.applet2.AppletParameters;
-import com.sun.deploy.net.MessageHeader;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.catalina.*;
 import org.apache.catalina.deploy.ApplicationListener;
@@ -257,6 +255,7 @@ public class StandardContext extends ContainerBase implements Context {
     @Override
     public void startInternal() {
 
+        setState(LifecycleState.STARTING, null);
         // 创建webappLoader
         classLoader = new WebClassLoader(this);
         ((Lifecycle) classLoader).start();
@@ -294,6 +293,62 @@ public class StandardContext extends ContainerBase implements Context {
         }
     }
 
+    @Override
+    public void stopInternal() {
+        setState(LifecycleState.STOPPING, null);
+
+        Container[] children = findChildren();
+        for (Container child : children) {
+            child.stop();
+        }
+
+        filterStop();
+
+        Manager manager = getManager();
+        // session序列化..待续
+        if (manager instanceof Lifecycle) {
+            ((Lifecycle) manager).stop();
+        }
+
+        listenerStop();
+
+        if (pipeline instanceof Lifecycle &&
+                ((Lifecycle) pipeline).getState().isAvailable()) {
+            ((Lifecycle) pipeline).stop();
+        }
+
+        if (context != null) {
+            context.clearAttributes();
+        }
+
+        // 清理类加载器资源
+        classLoader = null;
+
+    }
+    // 调用ServletContextListener.contextDestroyed()
+    private void listenerStop() {
+        List<Object> listeners = getLifecycleListeners();
+        if (listeners.size() > 0) {
+            for (Object listener : listeners) {
+                ServletContextEvent event = new ServletContextEvent(getServletContext());
+                if (listener instanceof ServletContextListener) {
+                    ((ServletContextListener) listener).contextDestroyed(event);
+                }
+            }
+        }
+    }
+
+    // 调用filter.stop()
+    private void filterStop() {
+        for (Map.Entry<String, ApplicationFilterConfig> configEntry : filterConfigMap.entrySet()) {
+            ApplicationFilterConfig filterConfig = configEntry.getValue();
+            // filter.destroy();
+            filterConfig.release();
+        }
+        filterConfigMap.clear();
+    }
+
+    // 创建过滤器，调用filter.init()
     private boolean filterStart() {
         filterConfigMap.clear();
         boolean ok = true;
@@ -311,6 +366,7 @@ public class StandardContext extends ContainerBase implements Context {
         return ok;
     }
 
+    // 创建监听器，调用contextListener.contextInitialized()
     private boolean listenerStart() {
         ClassLoader classLoader = this.classLoader.getClassLoader();
         List<Object> objects = new ArrayList<>();
@@ -359,7 +415,7 @@ public class StandardContext extends ContainerBase implements Context {
         return true;
     }
 
-
+    // 加载要求一开始就初始化的servlet
     private boolean loadOnStartup(Container[] children) {
         // 根据wrapper的loadOnStartup排序，值越小的约先启动，这里使用红黑树
         TreeMap<Integer, List<Wrapper>> map = new TreeMap<>();

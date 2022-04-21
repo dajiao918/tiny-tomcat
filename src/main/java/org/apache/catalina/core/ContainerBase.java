@@ -147,7 +147,6 @@ public abstract class ContainerBase extends LifecycleBase implements Container {
 
     @Override
     public void startInternal() {
-
         Container[] children = findChildren();
 
         for (Container child : children) {
@@ -161,6 +160,7 @@ public abstract class ContainerBase extends LifecycleBase implements Container {
 
     @Override
     public void stopInternal() {
+        setState(LifecycleState.STOPPING, null);
         Container[] children = findChildren();
 
         for (Container child : children) {

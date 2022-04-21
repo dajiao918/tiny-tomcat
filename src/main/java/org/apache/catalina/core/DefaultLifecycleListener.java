@@ -23,10 +23,10 @@ public class DefaultLifecycleListener implements LifecycleListener {
                 case Lifecycle.BEFORE_INIT_EVENT:
                     log.info("{} init ...", info);
                     break;
-                case Lifecycle.BEFORE_START_EVENT:
+                case Lifecycle.START_EVENT:
                     log.info("{} starting ...", info);
                     break;
-                case Lifecycle.BEFORE_STOP_EVENT:
+                case Lifecycle.STOP_EVENT:
                     log.info("{} stopping ...", info);
                     break;
             }

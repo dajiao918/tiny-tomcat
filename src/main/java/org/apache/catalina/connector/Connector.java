@@ -88,13 +88,32 @@ public class Connector extends LifecycleBase {
         mapperListener.start();
     }
 
+    public void pause() {
+        try {
+            protocolHandler.pause();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     @Override
     public void stopInternal() {
-
+        try {
+            protocolHandler.stop();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        mapperListener.stop();
     }
 
     @Override
     public void destroyInternal() {
+        try {
+            protocolHandler.destroy();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        getService().removeConnector(this);
 
     }
 

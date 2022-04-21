@@ -4,11 +4,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.catalina.connector.endpoint.nio.NioEndPoint;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.nio.channels.SocketChannel;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * 负责创建线程池
@@ -24,6 +23,16 @@ public abstract class AbstractEndpoint {
 
     protected boolean bind = false;
 
+    protected volatile boolean running = false;
+
+    protected volatile boolean paused = false;
+
+    protected Acceptor acceptor;
+
+    protected final CountDownLatch acceptorLatch = new CountDownLatch(1);
+
+    protected final CountDownLatch pollerLatch = new CountDownLatch(1);
+
     // 监听客户端请求的端口
     protected int port = 8080;
 
@@ -37,20 +46,25 @@ public abstract class AbstractEndpoint {
 
     protected int writeBufferSize = 1024 * 4;
 
-    protected volatile boolean close = false;
-
     protected NioEndPoint.Handler handler;
+
+    protected String name;
 
     protected int coreThreadSize = 20;
     protected int maxThreadSize = 20;
     protected int blockingThreadSize = 20;
+    private InetSocketAddress address;
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
 
     public void setHandler(NioEndPoint.Handler handler) {
         this.handler = handler;
-    }
-
-    public boolean isClose() {
-        return close;
     }
 
     public void init() throws IOException {
@@ -69,12 +83,16 @@ public abstract class AbstractEndpoint {
         startInternal();
     }
 
-    protected Executor createExecitor() {
+    protected Executor createExecutor() {
+        ExecutorThreadFactory threadFactory =
+                new ExecutorThreadFactory(getName() + "exec-", true);
         return new ThreadPoolExecutor(coreThreadSize, maxThreadSize,
-                6, TimeUnit.SECONDS,new ArrayBlockingQueue<>(blockingThreadSize));
+                6, TimeUnit.SECONDS,new ArrayBlockingQueue<>(blockingThreadSize), threadFactory);
     }
 
     protected abstract void bind() throws IOException;
+
+    protected abstract void unbind() ;
 
     protected abstract void startInternal() throws IOException;
 
@@ -87,5 +105,65 @@ public abstract class AbstractEndpoint {
      * */
     public abstract boolean setSocketOPtions(SocketChannel channel) throws IOException;
 
-    public abstract void stop();
+    public void stop() {
+        stopInternal();
+        if (bind) {
+            unbind();
+            bind = false;
+        }
+    }
+
+    public abstract void stopInternal();
+
+    public void pause() {
+        if (running && !paused) {
+            paused = true;
+            // 解锁阻塞的acceptor
+            unlockAcceptor();
+        }
+    }
+
+    protected void unlockAcceptor() {
+        // 如果acceptor已经停止了，不需要唤醒
+        if (acceptor.getState() == Acceptor.AcceptorState.PAUSED) {
+            return;
+        }
+        Socket socket = null;
+        try {
+            if (address == null) {
+                address = new InetSocketAddress("localhost", port);
+            }
+            socket = new Socket();
+            // 连接acceptor，达到唤醒的目的
+            socket.connect(address);
+
+            int waitTime = 1000;
+            // 等待socket连接
+            while (waitTime > 0 &&
+                    acceptor.getState() == Acceptor.AcceptorState.RUNNING) {
+                Thread.sleep(5);
+                waitTime -= 5;
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (socket != null) {
+                    socket.close();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+    }
+
+    public boolean isPaused() {
+        return paused;
+    }
+
+    public boolean isRunning() {
+        return running;
+    }
 }

@@ -73,6 +73,9 @@ public class StandardService extends LifecycleBase implements Service {
 
     @Override
     public ClassLoader getParentClassLoader() {
+        if (parentClassLoader != null)
+            return  parentClassLoader;
+        parentClassLoader = getServer().getParentClassLoader();
         return parentClassLoader;
     }
 
@@ -131,6 +134,11 @@ public class StandardService extends LifecycleBase implements Service {
 
     @Override
     public void stopInternal() {
+
+        // 首先停止connector接收socket，以及处理事件
+        for (Connector connector : connectors) {
+            connector.pause();
+        }
 
         if (container != null) {
             container.stop();

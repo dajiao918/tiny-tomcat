@@ -17,4 +17,8 @@ public interface ProtocolHandler {
     void stop();
 
     void start() throws IOException;
+
+    void pause();
+
+    void destroy();
 }

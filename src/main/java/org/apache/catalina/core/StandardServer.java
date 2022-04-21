@@ -6,6 +6,11 @@ import org.apache.catalina.LifecycleListener;
 import org.apache.catalina.Server;
 import org.apache.catalina.Service;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.ServerSocket;
+import java.net.Socket;
+
 /**
  * @author: Mr.Yu
  * @create: 2022-04-07 08:48
@@ -21,8 +26,15 @@ public class StandardServer extends LifecycleBase implements Server{
 
     private Service[] services = new StandardService[0];
 
+    private int port = 8085;
+    private ServerSocket serverSocket;
+
     public StandardServer() {
         super();
+    }
+
+    public void setPort(int port) {
+        this.port = port;
     }
 
     @Override
@@ -32,6 +44,12 @@ public class StandardServer extends LifecycleBase implements Server{
 
     @Override
     public ClassLoader getParentClassLoader() {
+        if (parentClassloader != null)
+            return parentClassloader;
+
+        parentClassloader = catalina.getParentClassLoader();
+        if (parentClassloader == null)
+            parentClassloader = ClassLoader.getSystemClassLoader();
         return parentClassloader;
     }
 
@@ -64,9 +82,52 @@ public class StandardServer extends LifecycleBase implements Server{
         }
     }
 
+    // 等待停止服务器
     @Override
     public void await() {
-        // TODO
+        try {
+            serverSocket = new ServerSocket(port,1);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        if (serverSocket != null) {
+            try {
+                while (true) {
+                    String command = null;
+                    Socket stopSocket = null;
+                    InputStream inputStream = null;
+                    try {
+                        stopSocket = serverSocket.accept();
+                        inputStream = stopSocket.getInputStream();
+                        byte[] bytes = new byte[100];
+                        int read = inputStream.read(bytes, 0, bytes.length);
+                        command = new String(bytes,0,read);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                    finally {
+                        try {
+                            if (stopSocket != null) {
+                                stopSocket.close();
+                            }
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    if ("shutdown".equals(command)) {
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                try {
+                    serverSocket.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
     }
 
     @Override
@@ -91,7 +152,7 @@ public class StandardServer extends LifecycleBase implements Server{
 
     @Override
     public void initInternal() {
-
+        setState(LifecycleState.INITIALIZING, null);
         for (Service service : services) {
             service.init();
         }
@@ -99,6 +160,7 @@ public class StandardServer extends LifecycleBase implements Server{
 
     @Override
     public void startInternal() {
+        setState(LifecycleState.STARTING, null);
         for (Service service : services) {
             service.start();
         }
@@ -107,6 +169,7 @@ public class StandardServer extends LifecycleBase implements Server{
 
     @Override
     public void stopInternal() {
+        setState(LifecycleState.STOPPING, null);
         for (Service service : services) {
             service.stop();
         }

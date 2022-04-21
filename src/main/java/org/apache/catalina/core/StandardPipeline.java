@@ -121,21 +121,22 @@ public class StandardPipeline extends LifecycleBase implements Pipeline, Contain
 
     @Override
     public void initInternal() {
+        // TODO
     }
 
     @Override
     public void startInternal() {
-
+        // TODO
     }
 
     @Override
     public void stopInternal() {
-
+        // TODO
     }
 
     @Override
     public void destroyInternal() {
-
+        // TODO
     }
 
     @Override

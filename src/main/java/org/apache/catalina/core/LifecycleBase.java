@@ -95,13 +95,12 @@ public abstract class LifecycleBase implements Lifecycle {
     @Override
     public final void stop() {
         try {
-            setState(LifecycleState.STARTING_PREP,null);
+            setState(LifecycleState.STOPPING_PREP,null);
             stopInternal();
-            setState(LifecycleState.STOPPED, null);
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
-            setState(LifecycleState.FAILED, null);
+            setState(LifecycleState.STOPPED, null);
             destroy();
         }
     }
@@ -110,7 +109,7 @@ public abstract class LifecycleBase implements Lifecycle {
 
     @Override
     public final void destroy() {
-        if (state != LifecycleState.FAILED) {
+        if (state != LifecycleState.STOPPED) {
             stop();
         }
         setState(LifecycleState.DESTROYING,null);

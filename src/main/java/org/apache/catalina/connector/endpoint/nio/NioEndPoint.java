@@ -13,6 +13,8 @@ import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -38,16 +40,22 @@ public class NioEndPoint extends AbstractEndpoint {
 
     @Override
     protected void startInternal() throws IOException {
-        poller = new Poller();
-        Thread thread = new Thread(poller,"poller");
-        thread.start();
-        executor = createExecitor();
-        acceptorStart();
+        if (!running) {
+            running = true;
+            paused = false;
+            poller = new Poller();
+            Thread thread = new Thread(poller, "poller");
+            thread.setDaemon(true);
+            thread.start();
+            executor = createExecutor();
+            acceptorStart();
+        }
     }
 
     private void acceptorStart() {
-        Acceptor acceptor = new Acceptor(this);
+        this.acceptor = new Acceptor(this,acceptorLatch);
         Thread thread = new Thread(acceptor, "acceptor");
+        thread.setDaemon(true);
         thread.start();
     }
 
@@ -60,9 +68,14 @@ public class NioEndPoint extends AbstractEndpoint {
 
     @Override
     public boolean setSocketOPtions(SocketChannel channel) throws IOException {
-        NioBufferHandler handler = new NioBufferHandler(readBufferSize, writeBufferSize);
-        NioChannel nioChannel = new NioChannel(channel, handler, poller);
-        poller.register(nioChannel);
+        try {
+            NioBufferHandler handler = new NioBufferHandler(readBufferSize, writeBufferSize);
+            NioChannel nioChannel = new NioChannel(channel, handler, poller);
+            poller.register(nioChannel);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
         return true;
     }
 
@@ -79,10 +92,41 @@ public class NioEndPoint extends AbstractEndpoint {
     }
 
     @Override
-    public void stop() {
-        close = true;
-        poller.getSelector().wakeup();
+    public void stopInternal() {
+        if (!paused) {
+            pause();
+        }
+        if (running) {
+            // 停止acceptor
+            running = false;
+            acceptorLatch.countDown();
+            // 停止poller
+            poller.destroy();
+        }
+        // 停止线程池
+        shutdownExecutor();
+    }
+
+    private void shutdownExecutor() {
+        if (executor != null) {
+            if (executor instanceof ThreadPoolExecutor) {
+                ThreadPoolExecutor executor = (ThreadPoolExecutor) this.executor;
+                executor.shutdownNow();
+                try {
+                    executor.awaitTermination(5000, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    protected void unbind() {
+        if (running) {
+            stop();
+        }
         try {
+            serverSocket.socket().close();
             serverSocket.close();
         } catch (IOException e) {
             e.printStackTrace();
@@ -102,7 +146,7 @@ public class NioEndPoint extends AbstractEndpoint {
             try {
                 channel.getChannel().register(poller.getSelector(), SelectionKey.OP_READ,channel);
             } catch (ClosedChannelException e) {
-                close = true;
+                running = false;
                 e.printStackTrace();
             }
         }
@@ -110,11 +154,12 @@ public class NioEndPoint extends AbstractEndpoint {
 
     public class Poller implements Runnable {
 
-        private Selector selector;
+        private final Selector selector;
         private long nextExpiration = 0;
-        private LinkedBlockingQueue<Runnable> tasks = new LinkedBlockingQueue<>();
+        private final LinkedBlockingQueue<Runnable> tasks = new LinkedBlockingQueue<>();
         private final AtomicLong wakeupCounter = new AtomicLong();
-        private long selectorTimeout = 1000;
+        private final long selectorTimeout = 1000;
+        private volatile boolean closed = false;
 
         public Poller() throws IOException {
             synchronized (Poller.class) {
@@ -125,9 +170,30 @@ public class NioEndPoint extends AbstractEndpoint {
         @Override
         public void run() {
             log.info("poller begin do event....");
-            while (!close) {
+            while (running) {
                 events();
                 try {
+
+                    // connector pause，在停止container过程中，不再轮询事件
+                    while (paused && running) {
+                        try {
+                            // 等待countdown
+                            pollerLatch.await();
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    // 如果上面while执行了，不出意外，需要close了
+                    if (closed) {
+                        try {
+                            selector.close();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                        tasks.clear();
+                        break;
+                    }
+
                     int keyCount = 0;
                     if (wakeupCounter.getAndSet(-1) > 0) {
                         keyCount = selector.selectNow();
@@ -136,7 +202,15 @@ public class NioEndPoint extends AbstractEndpoint {
                     }
                     wakeupCounter.set(0);
 
-                    if (close) {
+                    // 在检测事件的过程中，endpoint可能close
+                    if (closed) {
+
+                        try {
+                            selector.close();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                        tasks.clear();
                         break;
                     }
 
@@ -162,7 +236,6 @@ public class NioEndPoint extends AbstractEndpoint {
                     timeout();
                 } catch (IOException e) {
                     e.printStackTrace();
-                    close = true;
                 }
             }
             log.info("poller thread died");
@@ -193,6 +266,7 @@ public class NioEndPoint extends AbstractEndpoint {
                     key.cancel();
                 } else if ((channel.interestOps()&SelectionKey.OP_READ) == SelectionKey.OP_READ&&
                         channel.getTimeOut() > 0) {
+                    // 如果channel注册了可读事件，但是在timeout事件内没有select，那么清理掉
                     long delta = now - channel.lastAccess;
                     long timeOut = channel.getTimeOut();
                     if (delta > timeOut) {
@@ -229,6 +303,12 @@ public class NioEndPoint extends AbstractEndpoint {
 
         public void closeChannel(NioChannel channel) {
             // TODO
+        }
+
+        public void destroy() {
+            closed = true;
+            pollerLatch.countDown();
+            selector.wakeup();
         }
     }
 
